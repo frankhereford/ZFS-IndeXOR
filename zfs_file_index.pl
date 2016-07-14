@@ -71,9 +71,9 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
 
 sub where_is_my_gypsy_wife_tonight
   {
-  my $name = $File::Find::name;
-  my $dir = $File::Find::dir;
-  my $base = $_;
+  my $name = $File::Find::name; # /home/frank/taco.txt
+  my $dir = $File::Find::dir; # /home/frank/
+  my $base = $_; # taco.txt
 
   my ($filename, $directory) = fileparse($name);
 
@@ -110,7 +110,7 @@ sub stubborn_as_those_garbage_bags_that_time_cannot_decay # check to make sure w
     if ($how_to_get_to_mordor{$full_path})
       {
       print "GOT ONE: ", $full_path, "!\n";
-      #<>;
+      <>;
       } 
     }
 
