@@ -10,12 +10,20 @@ use File::Basename;
 
 my $db = DBI->connect("DBI:mysql:database=indexor;host=10.10.10.1", "indexor");
 
+my %how_to_get_to_mordor; # cuz we'll need to know, ya know.
+
+my $insert_directory_sql = "insert into directories (parent, depth, name) values (?, ?, ?)";
+my $insert_directory = $db->prepare($insert_directory_sql);
+my $get_directory_sql = "select id, depth from directories where name = ? and parent = ?";
+my $get_directory = $db->prepare($get_directory_sql);
+
 do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be();
 
 sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
   {
-  $db->do('TRUNCATE files;');
+  $db->do('TRUNCATE files;'); # it's TOTALLY smart to include TRUNCATE commands right at the top of your code. This has NEVER made me curse and holler. Never.
   $db->do('TRUNCATE directories;');
+
 
 
   my @filesystems = ();
@@ -41,6 +49,8 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
     }
   shift @depths; #WHY? WHY?! 
 
+  my %how_to_get_to_mordor = map { $_ => 1 } @depths; # make a map to mordor by um, mapping, the zfs array? Sure why not.
+
   print Dumper \@depths, "\n";
   # so now we have this ....thing and we can go up through it backwards and know where we have been and were we ought not go.
 
@@ -48,23 +58,50 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
     {
     foreach my $directory (@{$depth})
       {
+      print "\n\n\n";
       print $directory, "\n";
+      print "Ready?\n";
+      <>;
+      find({ wanted => \&where_is_my_gypsy_wife_tonight, preprocess => \&stubborn_as_hose_garbage_bags_that_time_cannot_decay },$directory);
       }
     }
   }
 
+sub where_is_my_gypsy_wife_tonight
+  {
+  my $name = $File::Find::name;
+  my $dir = $File::Find::dir;
+  my $base = $_;
 
+  my ($filename, $directory) = fileparse($name);
 
+  if (-d $name)
+    {
+    print $name, "\n";
+    #&insert_directory($name); # insert directory
+    }
+  #elsif (-e $name and -r $name)
+    #{
+    #print "Name: ", $name, "\n";
+    #print "Dir: ", $dir, "\n";
+    #print "Base: ", $base, "\n";
+    #print "Filename: ", $filename, "\n";
+    #print "Directory: ", $directory, "\n";
+    #&insert_file($name);
+    #}
+  }
 
-
-
-
-
-
-
-
-
-
+sub stubborn_as_hose_garbage_bags_that_time_cannot_decay # check to make sure we're not going down a rabbit hole we've been down before, by checking the map to mordor.
+  {
+  my @directory_contents = @_;
+  my @good_things;
+  foreach my $thing (@directory_contents)
+    {
+    next if $thing =~ /workspace/i; # nevergood;
+    push @good_things, $thing unless -d $thing and $how_to_get_to_mordor{$thing};
+    }
+  return @good_things; # because who likes bad things.
+  }
 
 
 
@@ -88,6 +125,21 @@ sub occurrences
   }
 
 exit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 my $root = '/';
 
