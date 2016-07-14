@@ -30,8 +30,6 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
   <$zfs>;
   while (my $filesystem = <$zfs>)
     {
-    next if $filesystem =~ /workspace/i;
-    next unless $filesystem =~ /frank/i;
     chomp $filesystem;
     chop $filesystem if $filesystem =~ /\/$/;
     push @filesystems, $filesystem;
@@ -51,10 +49,14 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
 
   %how_to_get_to_mordor = map { $_ => 1 } @filesystems; # make a map to mordor by um, mapping, the zfs array? Sure why not.
 
+
+  print Dumper \%how_to_get_to_mordor, "\n";
   #print Dumper \@depths, "\n";
   # so now we have this ....thing and we can go up through it backwards and know where we have been and were we ought not go.
 
-  foreach my $depth (reverse(@depths))
+  my @heights = reverse(@depths);
+
+  foreach my $depth (@heights)
     {
     foreach my $directory (@{$depth})
       {
@@ -62,7 +64,7 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
       #print $directory, "\n";
       #print "Ready?\n";
       #<>;
-      find({ wanted => \&where_is_my_gypsy_wife_tonight, preprocess => \&stubborn_as_hose_garbage_bags_that_time_cannot_decay },$directory);
+      find({wanted => \&where_is_my_gypsy_wife_tonight, preprocess => \&stubborn_as_those_garbage_bags_that_time_cannot_decay}, $directory);
       }
     }
   }
@@ -91,18 +93,28 @@ sub where_is_my_gypsy_wife_tonight
     #}
   }
 
-sub stubborn_as_hose_garbage_bags_that_time_cannot_decay # check to make sure we're not going down a rabbit hole we've been down before, by checking the map to mordor.
+sub stubborn_as_those_garbage_bags_that_time_cannot_decay # check to make sure we're not going down a rabbit hole we've been down before, by checking the map to mordor.
   {
   my @directory_contents = @_;
-  #print Dumper \@directory_contents, "\n";
-  #print Dumper \%how_to_get_to_mordor, "\n";
-  my @good_things;
+
+  my @good_things = ();
   foreach my $thing (@directory_contents)
     {
-    next if $thing =~ /workspace/i; # nevergood;
-    push @good_things, $thing unless $how_to_get_to_mordor{$thing}; 
+    next if $thing =~ /^\.{1,2}$/;
+    my $full_path = $File::Find::dir . '/' . $thing;
+
+    #print $full_path, "\n" if -d $full_path;
+    #<>;
+
+    push @good_things, $thing unless ($how_to_get_to_mordor{$full_path});
+    if ($how_to_get_to_mordor{$full_path})
+      {
+      print "GOT ONE: ", $full_path, "!\n";
+      #<>;
+      } 
     }
-  return @good_things; # because who likes bad things.
+
+  return @good_things;
   }
 
 
