@@ -16,6 +16,8 @@ my $insert_directory_sql = "insert into directories (parent, depth, name) values
 my $insert_directory = $db->prepare($insert_directory_sql);
 my $get_directory_sql = "select id, depth from directories where name = ? and parent = ?";
 my $get_directory = $db->prepare($get_directory_sql);
+my $insert_file_sql = "insert into files (filename, directory) values (?, ?)";
+my $insert_file = $db->prepare($insert_file_sql);
 
 do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be();
 
@@ -82,15 +84,25 @@ sub where_is_my_gypsy_wife_tonight
     my $id = &my_house_in_the_middle_of_the_street($name);
     print $id, ": ", $name, "\n";
     }
-  #elsif (-e $name and -r $name)
-    #{
+  elsif (-e $name and -r $name)
+    {
     #print "Name: ", $name, "\n";
     #print "Dir: ", $dir, "\n";
     #print "Base: ", $base, "\n";
     #print "Filename: ", $filename, "\n";
     #print "Directory: ", $directory, "\n";
-    #&insert_file($name);
-    #}
+    &friend_is_a_four_letter_word($name);
+    }
+  }
+
+
+sub friend_is_a_four_letter_word # insert file
+  {
+  my $full_path = shift; # /home/frank/taco.txt
+  my @yellow_brick_road = split(/\//,$full_path); # this isn't software i really care if you can read. 
+  my $filename = pop(@yellow_brick_road);
+  my $parent = my_house_in_the_middle_of_the_street(join('/', @yellow_brick_road)); 
+  $insert_file->execute($filename, $parent)
   }
 
 sub stubborn_as_those_garbage_bags_that_time_cannot_decay # check to make sure we're not going down a rabbit hole we've been down before, by checking the map to mordor.
@@ -102,27 +114,19 @@ sub stubborn_as_those_garbage_bags_that_time_cannot_decay # check to make sure w
     {
     next if $thing =~ /^\.{1,2}$/;
     my $full_path = $File::Find::dir . '/' . $thing;
-
-    #print $full_path, "\n" if -d $full_path;
-    #<>;
-
     push @good_things, $thing unless ($how_to_get_to_mordor{$full_path});
-    if ($how_to_get_to_mordor{$full_path})
-      {
-      print "GOT ONE: ", $full_path, "!\n";
-      <>;
-      } 
     }
 
   return @good_things;
   }
 
-
-
 sub my_house_in_the_middle_of_the_street
   {
   #print "Welcome to zombocom\n";
   my $path = shift;
+
+  #print "In my house: ", $path, "\n"; <>;
+
   my @path = split("/", $path);
   my $zeroth_before_the_slash_nothing_lived_here_ignore_this_long_variable_the_compiler_hates_us_both = shift(@path);
   my $directory = shift(@path);
