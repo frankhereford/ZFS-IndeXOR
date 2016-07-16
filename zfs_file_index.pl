@@ -7,7 +7,7 @@ use warnings;
 use File::Find;
 use Getopt::Std;
 use Data::Dumper;
-use Digest::xxHash qw[xxhash64_hex];
+use Digest::xxHash qw[xxhash64];
 
 use File::Basename;
 
@@ -24,6 +24,8 @@ my $get_directory_sql = "select id, depth from directories where name = ? and pa
 my $get_directory = $db->prepare($get_directory_sql);
 my $insert_file_sql = "insert into files (filename, directory) values (?, ?)";
 my $insert_file = $db->prepare($insert_file_sql);
+my $get_directory_build_sql = "select id, name, depth, parent from directories where id = ?";
+my $get_directory_build = $db->prepare($get_directory_build_sql);
 
 
 unless ($options{'t'} or $options{'s'} or $options{'h'})
@@ -48,10 +50,28 @@ if ($options{'e'})
   }
 
 do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be() if $options{'t'};
-mix_and_match() if $options{'h'};
+the_blender() if $options{'h'};
 
-sub mix_and_match
+sub the_blender
   {
+  my $sql = "select directory, filename, id from files";
+  my $query = $db->prepare($sql);
+  $query->execute();
+  while (my $file = $query->fetchrow_hashref)
+    {
+    my @path = ($file->{'filename'});
+    $get_directory_build->execute($file->{'directory'});
+    my $d = $get_directory_build->fetchrow_hashref;
+    unshift(@path, $d->{'name'});
+    while ($d->{'depth'} != 0)
+      {
+      $get_directory_build->execute($d->{'parent'});
+      $d = $get_directory_build->fetchrow_hashref;
+      unshift(@path, $d->{'name'});
+      }
+    my $target = '/' . join('/', @path) . '/' . $file->{'filename'};
+    print xxhash64($target, 2**(8*(int(rand(4))+1))), "\n"; # the int rand is the slow part here..
+    }
   }
 
 sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
@@ -218,4 +238,5 @@ sub occurrences
 
   return $matches;
   }
+
 
