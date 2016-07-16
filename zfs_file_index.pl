@@ -5,8 +5,14 @@ use strict;
 use threads;
 use warnings;
 use File::Find;
+use Getopt::Std;
 use Data::Dumper;
+use Digest::xxHash qw[xxhash64_hex];
+
 use File::Basename;
+
+my %options;
+getopts('tshe', \%options);
 
 my $db = DBI->connect("DBI:mysql:database=indexor;host=10.10.10.1", "indexor");
 
@@ -19,13 +25,38 @@ my $get_directory = $db->prepare($get_directory_sql);
 my $insert_file_sql = "insert into files (filename, directory) values (?, ?)";
 my $insert_file = $db->prepare($insert_file_sql);
 
-do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be();
+
+unless ($options{'t'} or $options{'s'} or $options{'h'})
+  {
+  print <<YOUNEEDHELP;
+
+SO, yea, here ya go:
+
+-t will /t/raverse the ZFS filesystems and stuff all the directory structure and files into the database. You set that up right, right?
+-s will cruise over the files in the database, and size each file and record it in the database
+-h will cruise over the files in the database, and hash them (xxHash) and record it in the database
+-e will empty the database and you'll be starting over fresh
+
+YOUNEEDHELP
+  exit;
+  }
+
+if ($options{'e'})
+  {
+  $db->do('TRUNCATE files;');
+  $db->do('TRUNCATE directories;');
+  }
+
+do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be() if $options{'t'};
+mix_and_match() if $options{'h'};
+
+sub mix_and_match
+  {
+  }
 
 sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
   {
-  $db->do('TRUNCATE files;'); # it's TOTALLY smart to include TRUNCATE commands right at the top of your code. This has NEVER made me curse and holler. Never.
-  $db->do('TRUNCATE directories;');
-
+  die "You can't be calling -t without some -e; it's just not right! I'm just giving you this line to comment out if you're into that.." unless $options{'e'};
   my @filesystems = ();
   my $cmd = 'zfs list -o mountpoint -t filesystem';
   open(my $zfs, "-|", $cmd);
@@ -73,33 +104,27 @@ sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
 
 sub where_is_my_gypsy_wife_tonight
   {
-  my $name = $File::Find::name; # /home/frank/taco.txt
-  my $dir = $File::Find::dir; # /home/frank/
-  my $base = $_; # taco.txt
+  my $name = $File::Find::name;
+  my $dir = $File::Find::dir;
+  my $base = $_;
 
   my ($filename, $directory) = fileparse($name);
 
   if (-d $name)
     {
     my $id = &my_house_in_the_middle_of_the_street($name);
-    print $id, ": ", $name, "\n";
+    #print $id, ": ", $name, "\n";
     }
   elsif (-e $name and -r $name)
     {
-    #print "Name: ", $name, "\n";
-    #print "Dir: ", $dir, "\n";
-    #print "Base: ", $base, "\n";
-    #print "Filename: ", $filename, "\n";
-    #print "Directory: ", $directory, "\n";
     &friend_is_a_four_letter_word($name);
     }
   }
 
-
 sub friend_is_a_four_letter_word # insert file
   {
-  my $full_path = shift; # /home/frank/taco.txt
-  my @yellow_brick_road = split(/\//,$full_path); # this isn't software i really care if you can read. 
+  my $full_path = shift;
+  my @yellow_brick_road = split(/\//,$full_path);
   my $filename = pop(@yellow_brick_road);
   my $parent = my_house_in_the_middle_of_the_street(join('/', @yellow_brick_road)); 
   $insert_file->execute($filename, $parent)
@@ -124,13 +149,10 @@ sub my_house_in_the_middle_of_the_street
   {
   #print "Welcome to zombocom\n";
   my $path = shift;
-
-  #print "In my house: ", $path, "\n"; <>;
-
   my @path = split("/", $path);
   my $zeroth_before_the_slash_nothing_lived_here_ignore_this_long_variable_the_compiler_hates_us_both = shift(@path);
   my $directory = shift(@path);
-  my $root_sql = "select id from directories where name = ? and depth = ?"; #" and parent = ?";
+  my $root_sql = "select id from directories where name = ? and depth = ?";
   my $root_query = $db->prepare($root_sql);
   $root_query->execute($directory, 0);
   my $root_result = $root_query->fetchrow_hashref;
