@@ -6,13 +6,16 @@ use threads;
 use warnings;
 use File::Find;
 use Getopt::Std;
+use Digest::MD5;
+use File::Slurp;
 use Data::Dumper;
-use Digest::xxHash qw[xxhash64];
+use Number::Bytes::Human qw(format_bytes);
+#use Digest::xxHash qw[xxhash64];
 
 use File::Basename;
 
 my %options;
-getopts('tshe', \%options);
+getopts('the', \%options);
 
 my $db = DBI->connect("DBI:mysql:database=indexor;host=10.10.10.1", "indexor");
 
@@ -26,6 +29,8 @@ my $insert_file_sql = "insert into files (filename, directory) values (?, ?)";
 my $insert_file = $db->prepare($insert_file_sql);
 my $get_directory_build_sql = "select id, name, depth, parent from directories where id = ?";
 my $get_directory_build = $db->prepare($get_directory_build_sql);
+my $update_files_with_hash_size_sql = "update files set size = ?, md5 = ? where id = ?";
+my $update_files_with_hash_size = $db->prepare($update_files_with_hash_size_sql);
 
 
 unless ($options{'t'} or $options{'s'} or $options{'h'})
@@ -35,8 +40,7 @@ unless ($options{'t'} or $options{'s'} or $options{'h'})
 SO, yea, here ya go:
 
 -t will /t/raverse the ZFS filesystems and stuff all the directory structure and files into the database. You set that up right, right?
--s will cruise over the files in the database, and size each file and record it in the database
--h will cruise over the files in the database, and hash them (xxHash) and record it in the database
+-h will start the thread launcher for the hashing and sizer threads
 -e will empty the database and you'll be starting over fresh
 
 YOUNEEDHELP
@@ -50,28 +54,38 @@ if ($options{'e'})
   }
 
 do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be() if $options{'t'};
-the_blender() if $options{'h'};
+my $hash = the_blender(1) if $options{'h'};
 
 sub the_blender
   {
-  my $sql = "select directory, filename, id from files";
+  my $id = shift;
+  my $sql = "select directory, filename, id from files where id = ?";
   my $query = $db->prepare($sql);
-  $query->execute();
-  while (my $file = $query->fetchrow_hashref)
+  $query->execute($id);
+  my $file = $query->fetchrow_hashref;
+  my @path = ($file->{'filename'});
+  $get_directory_build->execute($file->{'directory'});
+  my $d = $get_directory_build->fetchrow_hashref;
+  unshift(@path, $d->{'name'});
+  while ($d->{'depth'} != 0)
     {
-    my @path = ($file->{'filename'});
-    $get_directory_build->execute($file->{'directory'});
-    my $d = $get_directory_build->fetchrow_hashref;
+    $get_directory_build->execute($d->{'parent'});
+    $d = $get_directory_build->fetchrow_hashref;
     unshift(@path, $d->{'name'});
-    while ($d->{'depth'} != 0)
-      {
-      $get_directory_build->execute($d->{'parent'});
-      $d = $get_directory_build->fetchrow_hashref;
-      unshift(@path, $d->{'name'});
-      }
-    my $target = '/' . join('/', @path) . '/' . $file->{'filename'};
-    print xxhash64($target, 2**(8*(int(rand(4))+1))), "\n"; # the int rand is the slow part here..
     }
+  my $target = '/' . join('/', @path);
+  #print xxhash64($target, int(rand(2**(8*(int(rand(4))+1))))), "\n"; # the stupidest thing ever written. 
+  #my $bin = read_file($target, binmode => ':raw'); # would have been awesome but it reads the dang thing into memory and then hashes it..
+  #print xxhash64($bin, int(rand(2**(32)))), "\n";
+  #print "Size: ", format_bytes(-s $target), "\n";
+  my $size = -s $target;
+  print $file->{'id'} . ": " . $target . " is " . format_bytes($size) . ".\n";
+  open (my $fileh, '<', $target) or die "Can't open '$target': $!";
+  binmode ($fileh);
+  my $md5 = Digest::MD5->new->addfile($fileh)->hexdigest;
+  close $fileh;
+  $update_files_with_hash_size->execute($size, uc($md5), $file->{'id'});
+  print 'MD5: ', uc($md5), "\n";
   }
 
 sub do_not_dwell_on_what_has_passed_away_or_what_is_yet_to_be
