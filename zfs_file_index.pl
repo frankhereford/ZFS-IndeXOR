@@ -5,13 +5,18 @@ use strict;
 use threads;
 use Thread::Queue;
 use warnings;
+use File::Path qw(make_path remove_tree);
+use UUID::Tiny ':std';;
 use File::Find;
-use Time::Stopwatch;
+use File::Copy;
+use File::Touch;
 use Getopt::Std;
 use Digest::SHA;
 use Digest::MD5;
 use File::Slurp;
 use Data::Dumper;
+use File::Basename;
+use Time::Stopwatch;
 use Number::Bytes::Human qw(format_bytes);
 #use Digest::xxHash qw[xxhash64];
 
@@ -19,8 +24,9 @@ use File::Basename;
 
 my $conveyor_belt = Thread::Queue->new();
 my @hash_threads;
-my $queue_max_size = 2500;
+my $queue_max_size = 25000;
 my %options;
+my $expose_jobs = 20;
 
 getopts('th:e', \%options);
 
@@ -109,11 +115,12 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
   {
   for (my $x = 0; $x < $options{'h'}; $x++)
     {
-    my $thread = threads->create(
-      \&the_blender
-      );
+    my $thread = threads->create( \&the_blender);
     push @hash_threads, \$thread;
     }
+
+  my $thread = threads->create( \&congress_hasher);
+  push @hash_threads, \$thread;
 
   while (1)
     {
@@ -126,8 +133,6 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
       my $rows_needed = $queue_max_size - $items_in_queue;
       next if $rows_needed <= 0;
 
-      print "Remaining to do: ", $remaining_files, "\n";
-      print "Rows needed for queue: ", $rows_needed, "\n\n";
 
       my $get_files_to_work_sql = "select id from files where size is null limit 0, " . $rows_needed;
       my $get_files_to_work_query = $db->prepare($get_files_to_work_sql);
@@ -139,13 +144,18 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
         }
       $progress_query->execute();
       my $info = $progress_query->fetchrow_hashref;
-      print "\n\n";
-      print "Percent Complete: ", $info->{'percent_done'}, "\n";
-      print "Average Compute Time: ", $info->{'average_compute_time'}, "\n";
-      print "Recente Average Compute Time: ", $info->{'recent_average_compute_time'}, "\n";
-      print "\n\n";
+
+      print "Remaining to do: ", $remaining_files, "\n";
+      print "Rows needed for queue: ", $rows_needed, "\n\n";
+
+      print "All file count: ", $info->{'all_files'}, "\n";
+      print "Hashed files: ", $info->{'done_files'}, "\n";
+      print "Percent coplete: ", $info->{'percent_done'}, "\n";
+      print "Average compute time: ", $info->{'average_compute_time'}, "\n";
+      print "Recente average compute time: ", $info->{'recent_average_compute_time'}, "\n";
+      print "\n";
       }
-    sleep 60;
+    sleep 60 * 10;
     }
 
   $conveyor_belt->end();
@@ -153,6 +163,70 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
   foreach my $thread (@hash_threads)
     {
     ${$thread}->join();
+    }
+  }
+
+sub congress_hasher
+  {
+  my $db = DBI->connect("DBI:mysql:database=indexor;host=10.10.10.1", "indexor");
+  tie my $timer, 'Time::Stopwatch';
+  my $find_file_sql = "select directory, filename, id from files where id = ?";
+  my $find_file_query = $db->prepare($find_file_sql);
+  my $get_directory_build_sql = "select id, name, depth, parent from directories where id = ?";
+  my $get_directory_build = $db->prepare($get_directory_build_sql);
+  my $update_files_with_hash_size_sql = "update files set size = ? where id = ?";
+  my $update_files_with_hash_size = $db->prepare($update_files_with_hash_size_sql);
+
+  my $jobs = 0; 
+
+  while (defined(my $id = $conveyor_belt->dequeue())) 
+    {
+    my $sha = Digest::SHA->new('sha512');
+    $find_file_query->execute($id);
+    my $file = $find_file_query->fetchrow_hashref;
+    my @path = ($file->{'filename'});
+    $get_directory_build->execute($file->{'directory'});
+    my $d = $get_directory_build->fetchrow_hashref;
+    unshift(@path, $d->{'name'});
+    while ($d->{'depth'} != 0)
+      {
+      $get_directory_build->execute($d->{'parent'});
+      $d = $get_directory_build->fetchrow_hashref;
+      unshift(@path, $d->{'name'});
+      }
+    my $target = '/' . join('/', @path);
+    print $target, ' ', format_bytes(-s $target), "\n";
+    #print "Congressing: ", $target, "\n";
+    my($filename, $dirs, $suffix) = fileparse($target);
+    # shouldn't be on github but yea, my name is frank and I do have a an old Pulp album laying around..
+    my $btsync_path = '/home/frank/CommonPeople/' . 'congress' . '/';
+    my $dest_path = $btsync_path . create_uuid_as_string() . '/';
+    make_path($dest_path);
+    my $dest_file = $dest_path . $filename;
+    $timer = 0;
+    copy($target, $dest_file);
+    print "Copy took ", sprintf('%.3f',$timer) , " seconds.\n";
+    touch($dest_path . 'ready');
+
+    opendir my $dir, $btsync_path or die "Cannot open directory: $!";
+    my @files = readdir $dir;
+    closedir $dir;
+    my $open_jobs = scalar(@files) - 2;
+
+    while ($open_jobs >= $expose_jobs)
+      {
+      opendir my $dir, $btsync_path or die "Cannot open directory: $!";
+      my @files = readdir $dir;
+      closedir $dir;
+      $open_jobs = scalar(@files) - 2;
+      #print "Currently exposing ", $open_jobs, " jobs.\n";
+
+
+      #job clean up an file here.
+      sleep 20;
+      }
+
+    print "\n";
     }
   }
 
@@ -186,7 +260,6 @@ sub the_blender
     my $size = -s $target;
     #print $target, ' ', format_bytes($size), "\n";
 
-
     # SHA512
     $timer = 0;
     $sha->addfile($target); # Here is the heavy lifting. 
@@ -199,7 +272,6 @@ sub the_blender
     #print "digest b64 in ", sprintf('%.3f', $timer), " seconds.\n"; $timer = 0;
     #my $sql = "update files set size = ?, sha512_b64 = ?, sha512_hex = ?, digest_compute_time = ?, digested_time = now() where id = ?";
 
-
 =cut
     # MD5
     $timer = 0;
@@ -211,20 +283,11 @@ sub the_blender
     my $hex = $md5; # a little fib
 =cut
 
-
     my $sql = "update files set size = ?, sha512_hex = ?, digest_compute_time = ?, digested_time = now() where id = ?";
     my $query = $db->prepare($sql);
     $query->execute($size, $hex, $digest_time, $id);
 
-    print $digest_time, ": ", $hex, "\n";
-    #sleep 1; # WTF.
-    #print xxhash64($target, int(rand(2**(8*(int(rand(4))+1))))), "\n"; # the stupidest thing ever written. 
-    #my $bin = read_file($target, binmode => ':raw'); # would have been awesome but it reads the dang thing into memory and then hashes it..
-    #print xxhash64($bin, int(rand(2**(32)))), "\n";
-    #print $file->{'id'} . ": " . $target . " is " . format_bytes($size) . ".\n";
-
-    #$update_files_with_hash_size->execute($size, uc($md5), $file->{'id'});
-    #print 'MD5: ', uc($md5), "\n";
+    #print $digest_time, ": ", $hex, "\n";
     }
   }
 
