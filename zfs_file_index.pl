@@ -5,6 +5,7 @@ use strict;
 use threads;
 use Thread::Queue;
 use warnings;
+use JSON;
 use File::Path qw(make_path remove_tree);
 use UUID::Tiny ':std';;
 use File::Find;
@@ -119,8 +120,8 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
     push @hash_threads, \$thread;
     }
 
-  my $thread = threads->create( \&congress_hasher);
-  push @hash_threads, \$thread;
+  #my $thread = threads->create( \&congress_hasher);
+  #push @hash_threads, \$thread;
 
   while (1)
     {
@@ -155,7 +156,8 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
       print "Recente average compute time: ", $info->{'recent_average_compute_time'}, "\n";
       print "\n";
       }
-    sleep 60 * 10;
+    #sleep 60 * 3;
+    sleep 30;
     }
 
   $conveyor_belt->end();
@@ -206,7 +208,11 @@ sub congress_hasher
     $timer = 0;
     copy($target, $dest_file);
     print "Copy took ", sprintf('%.3f',$timer) , " seconds.\n";
-    touch($dest_path . 'ready');
+    #touch($dest_path . 'ready');
+    open(my $signal, ">", $dest_path . 'ready');
+    my $data = { id => $id, file => $filename};
+    print $signal encode_json($data);
+    close $signal;
 
     opendir my $dir, $btsync_path or die "Cannot open directory: $!";
     my @files = readdir $dir;
