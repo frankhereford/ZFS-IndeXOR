@@ -25,7 +25,7 @@ use File::Basename;
 
 my $conveyor_belt = Thread::Queue->new();
 my @hash_threads;
-my $queue_max_size = 25000;
+my $queue_max_size = 50000;
 my %options;
 my $expose_jobs = 20;
 
@@ -135,7 +135,7 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
       next if $rows_needed <= 0;
 
 
-      my $get_files_to_work_sql = "select id from files where size is null limit 0, " . $rows_needed;
+      my $get_files_to_work_sql = "select id from files where size is null and skip != 1 limit 0, " . $rows_needed;
       my $get_files_to_work_query = $db->prepare($get_files_to_work_sql);
       $get_files_to_work_query->execute();
       #for (my $x = 0; $x < $rows_needed; $x++)
@@ -143,21 +143,21 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
         {
         $conveyor_belt->enqueue($id);
         }
-      $progress_query->execute();
-      my $info = $progress_query->fetchrow_hashref;
+      #$progress_query->execute();
+      #my $info = $progress_query->fetchrow_hashref;
 
       print "Remaining to do: ", $remaining_files, "\n";
       print "Rows needed for queue: ", $rows_needed, "\n\n";
 
-      print "All file count: ", $info->{'all_files'}, "\n";
-      print "Hashed files: ", $info->{'done_files'}, "\n";
-      print "Percent coplete: ", $info->{'percent_done'}, "\n";
-      print "Average compute time: ", $info->{'average_compute_time'}, "\n";
-      print "Recente average compute time: ", $info->{'recent_average_compute_time'}, "\n";
+      #print "All file count: ", $info->{'all_files'}, "\n";
+      #print "Hashed files: ", $info->{'done_files'}, "\n";
+      #print "Percent coplete: ", $info->{'percent_done'}, "\n";
+      #print "Average compute time: ", $info->{'average_compute_time'}, "\n";
+      #print "Recente average compute time: ", $info->{'recent_average_compute_time'}, "\n";
       print "\n";
       }
     #sleep 60 * 3;
-    sleep 30;
+    sleep 5;
     }
 
   $conveyor_belt->end();
@@ -263,8 +263,15 @@ sub the_blender
       unshift(@path, $d->{'name'});
       }
     my $target = '/' . join('/', @path);
+    unless (-e $target and -f $target and -R $target)
+      {
+      my $sql = "update files set skip = 1 where id = ?";
+      my $query = $db->prepare($sql);
+      $query->execute($id);
+      next;
+      }
     my $size = -s $target;
-    #print $target, ' ', format_bytes($size), "\n";
+    print $target, ' ', format_bytes($size), "\n" if ($size > (2**28));
 
     # SHA512
     $timer = 0;
