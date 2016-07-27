@@ -69,8 +69,7 @@ SELECT
                             COUNT(id)
                         FROM
                             files
-                        WHERE
-                            sha512_hex IS NULL)) * 100),
+                            )) * 100),
                     3),
             '%') AS percent_done,
     ROUND(AVG(digest_compute_time), 2) AS average_compute_time,
@@ -197,7 +196,7 @@ sub congress_hasher
       unshift(@path, $d->{'name'});
       }
     my $target = '/' . join('/', @path);
-    print $target, ' ', format_bytes(-s $target), "\n";
+    print $id, ": ",  $target, ' ', format_bytes(-s $target), "\n";
     #print "Congressing: ", $target, "\n";
     my($filename, $dirs, $suffix) = fileparse($target);
     # shouldn't be on github but yea, my name is frank and I do have a an old Pulp album laying around..
@@ -271,7 +270,7 @@ sub the_blender
       next;
       }
     my $size = -s $target;
-    print $target, ' ', format_bytes($size), "\n" if ($size > (2**28));
+    print $id, ": ", $target, ' ', format_bytes($size), "\n" if ($size > (2**28));
 
     # SHA512
     $timer = 0;
