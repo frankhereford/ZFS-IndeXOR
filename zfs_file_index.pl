@@ -113,6 +113,12 @@ nothing_which_we_are_to_perceive_in_this_world_equals() if $options{'h'};
 
 sub nothing_which_we_are_to_perceive_in_this_world_equals
   {
+  print "Please wait while all rows are reset to out of queue.\n";
+  $db->do("update files set in_queue = 0");
+  print "Done.\n";
+  my $queueing_sql = "update files set in_queue = 1 where id = ?";
+  my $queueing_query = $db->prepare($queueing_sql);
+ 
   for (my $x = 0; $x < $options{'h'}; $x++)
     {
     my $thread = threads->create( \&the_blender);
@@ -134,12 +140,13 @@ sub nothing_which_we_are_to_perceive_in_this_world_equals
       next if $rows_needed <= 0;
 
 
-      my $get_files_to_work_sql = "select id from files where size is null and skip != 1 limit 0, " . $rows_needed;
+      my $get_files_to_work_sql = "select id from files where size is null and skip != 1 and in_queue = 0 limit 0, " . $rows_needed;
       my $get_files_to_work_query = $db->prepare($get_files_to_work_sql);
       $get_files_to_work_query->execute();
       #for (my $x = 0; $x < $rows_needed; $x++)
       while (my ($id) = $get_files_to_work_query->fetchrow_array)
         {
+	$queueing_query->execute($id);
         $conveyor_belt->enqueue($id);
         }
       #$progress_query->execute();
